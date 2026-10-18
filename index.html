@@ -71,7 +71,24 @@ body{background:var(--table);color:var(--ink);font-family:var(--body);overflow:h
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--ink-2);margin-top:10px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .hint{font-family:var(--mono);font-size:11px;color:var(--ink-2);text-align:right;margin-top:6px}
+.probs{margin-top:12px;padding-top:10px;border-top:1px solid var(--rule)}
+.probs[hidden],.pstat[hidden]{display:none}
+.probs .plabel{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);margin-bottom:6px}
+.probs .row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.probs button{font-family:var(--display);font-weight:600;font-size:14px;letter-spacing:.03em;text-align:left;background:#fff;border:1px solid var(--rule);border-left:3px solid var(--c);border-radius:3px;padding:7px 8px;color:var(--ink);cursor:pointer;transition:background .25s,color .25s;line-height:1.1}
+.probs button small{display:block;font-family:var(--mono);font-weight:400;font-size:10px;letter-spacing:0;color:var(--ink-2);margin-top:2px;transition:color .25s}
+.probs button[aria-pressed="true"]{background:var(--c);color:#fff;border-color:var(--c)}
+.probs button[aria-pressed="true"] small{color:rgba(255,255,255,.85)}
+.probs button:focus-visible{outline:2px solid var(--c);outline-offset:2px}
+.pstat{margin-top:10px;font-family:var(--mono);font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.pstat .big{font-family:var(--display);font-weight:700;font-size:34px;line-height:1;color:var(--pc,var(--ink));margin-right:6px}
+.weeks{display:grid;grid-template-columns:repeat(52,1fr);gap:1.5px;margin-top:8px;height:12px}
+.weeks i{background:#dcded8;border-radius:1px;transition:background .2s}
+.weeks i.on{background:#a9ada5} .weeks i.race{background:var(--race)}
+.lbl.prob{font-size:15px;padding:3px 7px;border-radius:3px;background:rgba(255,255,255,.88);text-shadow:none}
+.lbl.prob.f{color:var(--water)} .lbl.prob.w{color:var(--race)} .lbl.prob.c{color:var(--race)}
 @media (max-width:720px){
+  .probs button{font-size:13px;padding:6px} .probs button small{display:none}
   .rail .t{display:none} .rail button{text-align:center;padding:8px 4px 10px}
   .card{padding:14px 14px 12px} .stepno b{font-size:42px} .stepno h1{font-size:21px} .desc{font-size:13px}
   .top{flex-direction:column} .tools{justify-content:flex-start} .hint{display:none}
@@ -79,8 +96,6 @@ body{background:var(--table);color:var(--ink);font-family:var(--body);overflow:h
 }
 @media (max-width:720px) and (max-height:760px){ .desc{display:none} }
 </style>
-</head><body>
-
 
 <div id="stage"><div id="nightsky"></div></div>
 <div id="labels" aria-hidden="true"></div>
@@ -91,6 +106,15 @@ body{background:var(--table);color:var(--ink);font-family:var(--body);overflow:h
       <div class="stepno"><b id="no">01</b><h1 id="ttl">The circuit bends</h1></div>
       <p class="desc" id="desc"></p>
       <div class="metric" id="metric"></div>
+      <div class="pstat" id="pstat" hidden></div>
+      <div class="probs" id="probs" role="group" aria-label="The three problems on this site today">
+        <span class="plabel">the site today has 3 problems — tap one</span>
+        <div class="row">
+          <button type="button" data-p="1" style="--c:#3f86c4" aria-pressed="false">FLOOD<small>01 · rain has nowhere to go</small></button>
+          <button type="button" data-p="2" style="--c:#d9483b" aria-pressed="false">51 EMPTY WEEKS<small>02 · stands used once</small></button>
+          <button type="button" data-p="3" style="--c:#a8774a" aria-pressed="false">CUT IN TWO<small>03 · fence splits the park</small></button>
+        </div>
+      </div>
       <div class="legend">
         <span><i style="background:#3a3d39"></i>track</span>
         <span><i style="background:var(--park)"></i>mound</span>
@@ -182,6 +206,7 @@ function setStep(n, user){
     else { T[k]=t[k]; delay[k] = now + (k==='cab'?1900: k==='deck'?150 : k==='soil'?600 : 0); }
   }
   if (RM){ snapAll(); if (typeof updateTerrain==='function' && tg) updateTerrain(); }
+  if (typeof clearProb==='function'){ clearProb(); syncProbUI(); }
   const s = STEPS[step];
   document.documentElement.style.setProperty('--accent', s.c);
   document.getElementById('no').textContent = '0' + (step+1);
@@ -213,16 +238,21 @@ for (let j=0;j<ny;j++) for (let i=0;i<nx;i++){ const k=j*nx+i; const v = W(D.x0+
 const idx = [];
 for (let j=0;j<ny-1;j++) for (let i=0;i<nx-1;i++){ const a=j*nx+i, b=a+1, c=a+nx, d=c+1; idx.push(a,b,c, b,d,c); }
 tg.setIndex(idx); tg.setAttribute('position', new THREE.BufferAttribute(pos,3)); tg.setAttribute('hreal', new THREE.BufferAttribute(hreal,1));
+const sideA = new Float32Array(N); tg.setAttribute('side', new THREE.BufferAttribute(sideA,1));
 const terrainMat = new THREE.ShaderMaterial({
-  uniforms:{ L:{value:new THREE.Vector3(-0.45,0.8,0.35).normalize()}, uNight:{value:0}, uFlood:{value:0}, uBasin:{value:1}, uPoolN:{value:0}, uView:{value:0}, uVis:{value:null}, uGrid:{value:new THREE.Vector4(0,0,1,1)}, uDim:{value:new THREE.Vector2(1,1)}, uPools:{value:Array.from({length:32},()=>new THREE.Vector3())} },
-  vertexShader:`attribute float hreal; varying float vh; varying vec3 vn; varying vec2 vxz;
-    void main(){ vh=hreal; vn=normalize(normalMatrix*normal); vxz=position.xz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-  fragmentShader:`uniform vec3 L; uniform float uNight; uniform float uFlood; uniform float uBasin; uniform int uPoolN; uniform float uView; uniform sampler2D uVis; uniform vec4 uGrid; uniform vec2 uDim; uniform vec3 uPools[32]; varying float vh; varying vec3 vn; varying vec2 vxz;
+  uniforms:{ L:{value:new THREE.Vector3(-0.45,0.8,0.35).normalize()}, uNight:{value:0}, uFlood:{value:0}, uBasin:{value:1}, uPoolN:{value:0}, uView:{value:0}, uVis:{value:null}, uGrid:{value:new THREE.Vector4(0,0,1,1)}, uDim:{value:new THREE.Vector2(1,1)}, uPools:{value:Array.from({length:32},()=>new THREE.Vector3())}, uSplit:{value:0}, uWet:{value:0} },
+  vertexShader:`attribute float hreal; attribute float side; varying float vh; varying float vside; varying vec3 vn; varying vec2 vxz;
+    void main(){ vh=hreal; vside=side; vn=normalize(normalMatrix*normal); vxz=position.xz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader:`uniform vec3 L; uniform float uNight; uniform float uFlood; uniform float uBasin; uniform int uPoolN; uniform float uView; uniform sampler2D uVis; uniform vec4 uGrid; uniform vec2 uDim; uniform vec3 uPools[32]; uniform float uSplit; uniform float uWet; varying float vh; varying float vside; varying vec3 vn; varying vec2 vxz;
     void main(){
       vec3 ground=vec3(0.878,0.894,0.858);
       vec3 col=ground;
       if(vh>0.05){ float t=clamp(vh/10.,0.,1.); col=mix(vec3(0.74,0.85,0.68),vec3(0.27,0.55,0.32),t); }
       if(vh<-0.05){ float t=clamp(-vh/1.8,0.,1.); vec3 wet=mix(vec3(0.72,0.82,0.92),vec3(0.30,0.53,0.77),t); vec3 dry=mix(vec3(0.84,0.85,0.76),vec3(0.66,0.72,0.55),t); col=mix(dry,wet,uBasin); }
+      // problem 03: the two halves of the park, cut apart by the track
+      if(uSplit>0.001){ vec3 a=vec3(0.80,0.88,0.74), b=vec3(0.90,0.84,0.73); col=mix(col, vside>0.? a:b, uSplit*0.75); col=mix(col, col*0.82, uSplit*smoothstep(0.85,1.,abs(vside))*0.); }
+      // problem 01: wet, darkened ground under the flood
+      col=mix(col, col*vec3(0.78,0.84,0.9), uWet);
       // 1 m contours, like the hand diagram
       float f=abs(fract(vh+0.5)-0.5); float w=fwidth(vh)*1.1;
       float line=(vh>0.35)?1.-smoothstep(0.,w,f):0.;
@@ -360,7 +390,7 @@ function buildTowers(){
 
 // ---------- labels ----------
 const labelsEl = document.getElementById('labels'); const labels = [];
-function addLabel(html, cls, posFn, showFn){ const el = document.createElement('div'); el.className = 'lbl ' + cls; el.innerHTML = html; labelsEl.appendChild(el); labels.push({el, posFn, showFn}); }
+function addLabel(html, cls, posFn, showFn){ const el = document.createElement('div'); el.className = 'lbl ' + cls; el.innerHTML = html; el.style.opacity = 0; labelsEl.appendChild(el); labels.push({el, posFn, showFn}); }
 for (const k of 'ABCD'){
   const b = D.bends[k], i='ABCD'.indexOf(k), mc=D.mc[k];
   addLabel(k, 'bend', ()=>W(b.p[0]-b.out[0]*16, b.p[1]-b.out[1]*16, 2), ()=>step<2);
@@ -557,6 +587,136 @@ function applyConditions(now, dt){
   CS.view += ((COND.view?1:0)-CS.view)*Math.min(1, dt*3); terrainMat.uniforms.uView.value = 0;
 }
 
+// ---------- step 01 extra: the three problems of the site today ----------
+// 1 flood · 2 fifty-one empty weeks · 3 the park cut in two. Only on step 01, on flat ground, before the design answers them.
+const PROB_TXT = {
+  1:{c:'#3f86c4', t:'Flood: rain has nowhere to go', d:'Chatuchak is low and flat. In a monsoon storm the drains fill and the water spreads out instead of away: over the lawns, the paths and the track.'},
+  2:{c:'#d9483b', t:'51 empty weeks', d:'A street circuit brings in steel grandstands for one race week. For the other 51 weeks they stand empty, or are packed up and stored.'},
+  3:{c:'#a8774a', t:'A park cut in two', d:'On race weeks the circuit is fenced on both sides. People on one half of the park cannot reach the other: there is no way across the track.'}
+};
+let PROB = 0, probT0 = 0; const PT = {f:0,w:0,c:0}, PSm = {f:0,w:0,c:0};
+const probsEl = document.getElementById('probs'), pstat = document.getElementById('pstat'); let pstatLast = '';
+function cardText(s){ document.documentElement.style.setProperty('--accent', s.c); document.getElementById('ttl').textContent = s.t; document.getElementById('desc').textContent = s.d; }
+function setProb(p){
+  PROB = (PROB===p ? 0 : p); probT0 = performance.now();
+  PT.f = PROB===1?1:0; PT.w = PROB===2?1:0; PT.c = PROB===3?1:0;
+  if (RM) Object.assign(PSm, PT);
+  probsEl.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', String(+b.dataset.p===PROB)));
+  if (PROB){ cardText(PROB_TXT[PROB]); document.getElementById('metric').hidden = true; pstat.hidden = false; pstat.style.setProperty('--pc', PROB_TXT[PROB].c); }
+  else { cardText(STEPS[0]); document.getElementById('metric').hidden = false; pstat.hidden = true; }
+  pstatLast = ''; stopPlay();
+}
+probsEl.querySelectorAll('button').forEach(b=>b.addEventListener('click', ()=>setProb(+b.dataset.p)));
+function clearProb(){ PROB = 0; PT.f = PT.w = PT.c = 0; if (RM) Object.assign(PSm, PT); probsEl.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed','false')); document.getElementById('metric').hidden = false; pstat.hidden = true; pstatLast = ''; }
+function syncProbUI(){ probsEl.hidden = step!==0; }
+// track frame: normals at every centre-line point
+const tN = tr.map((p,i)=>{ const a=tr[Math.max(0,i-1)], b=tr[Math.min(tr.length-1,i+1)]; let dx=b[0]-a[0], dy=b[1]-a[1]; const L=Math.hypot(dx,dy)||1; return [-dy/L, dx/L]; });
+// which side of the track each ground cell is on (for the split tint)
+for (let k=0;k<N;k++){ const x=D.x0+(k%nx)*D.st, y=D.y0+Math.floor(k/nx)*D.st; let bi=0, bd=1e18;
+  for (let i=0;i<tr.length;i+=2){ const d=(tr[i][0]-x)**2+(tr[i][1]-y)**2; if (d<bd){ bd=d; bi=i; } }
+  const s=(x-tr[bi][0])*tN[bi][0]+(y-tr[bi][1])*tN[bi][1]; const hw=tr[bi][3]/2; sideA[k] = Math.abs(s)<hw ? 0 : Math.sign(s); }
+tg.attributes.side.needsUpdate = true;
+const sx = (nx-1)*D.st, sz = (ny-1)*D.st;
+const clamp01 = v=>Math.max(0,Math.min(1,v));
+const crossTex = (()=>{ const cv=document.createElement('canvas'); cv.width=cv.height=128; const g=cv.getContext('2d'); g.strokeStyle='#fff'; g.lineWidth=30; g.lineCap='round'; g.beginPath(); g.moveTo(28,28); g.lineTo(100,100); g.moveTo(100,28); g.lineTo(28,100); g.stroke(); g.strokeStyle='#d9483b'; g.lineWidth=18; g.stroke(); return new THREE.CanvasTexture(cv); })();
+
+// --- 1 · FLOOD: the whole model fills with a sheet of water ---
+const floodMat = new THREE.MeshLambertMaterial({color:0x5c9fd6, emissive:0x0f2c48, transparent:true, opacity:0, depthWrite:false});
+const floodBox = new THREE.Mesh(new THREE.BoxGeometry(sx+0.6, 1, sz+0.6).translate(0,0.5,0), floodMat); floodBox.renderOrder = 4; floodBox.visible = false; scene.add(floodBox);
+const rippleMat = new THREE.ShaderMaterial({ transparent:true, depthWrite:false, uniforms:{uT:{value:0}, uO:{value:0}},
+  vertexShader:`varying vec2 p; void main(){ p=position.xz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader:`uniform float uT; uniform float uO; varying vec2 p;
+    void main(){ float a=sin(p.x*.11+p.y*.05+uT*1.4)*sin(p.y*.09-p.x*.03-uT*1.1); float b=sin(p.x*.031-p.y*.047+uT*.6);
+      float l=smoothstep(.86,.99,a*.5+.5+b*.10); vec3 c=mix(vec3(.30,.56,.80),vec3(.86,.94,1.),l);
+      gl_FragColor=vec4(c, uO*(.30+.45*l)); }` });
+const ripple = new THREE.Mesh(new THREE.PlaneGeometry(sx+0.6, sz+0.6, 1, 1).rotateX(-Math.PI/2), rippleMat); ripple.renderOrder = 5; ripple.visible = false; scene.add(ripple);
+addLabel('', 'prob f', ()=>W(cx, cy+40, 6), ()=>step===0 && PSm.f>0.5); const floodLbl = labels[labels.length-1].el;
+
+// --- 2 · 51 EMPTY WEEKS: temporary steel grandstands at the bends, full once, then empty ---
+const standMat = new THREE.MeshLambertMaterial({color:0xb7bcc1}), standEdge = new THREE.LineBasicMaterial({color:0x5b6168, transparent:true, opacity:.8});
+const stands = [], standSeats = [];
+for (const k of 'ABCD'){
+  const b = D.bends[k], ang = Math.atan2(b.out[1], b.out[0]), ox=b.out[0], oy=b.out[1], tx=-oy, ty=ox;
+  const C0 = [b.p[0]+ox*22, b.p[1]+oy*22];
+  const g = new THREE.Group(); g.position.copy(W(C0[0], C0[1], 0)); g.rotation.y = ang;
+  for (let i=0;i<6;i++){ const h=1.3*(i+1);
+    const bg = new THREE.BoxGeometry(3.2, h, 42).translate(i*3.2, h/2, 0);
+    g.add(new THREE.Mesh(bg, standMat)); const e = new THREE.LineSegments(new THREE.EdgesGeometry(bg), standEdge); g.add(e);
+    for (let z=-20; z<=20; z+=1.6) standSeats.push({x:C0[0]+ox*(i*3.2)+tx*z, y:C0[1]+oy*(i*3.2)+ty*z, h, k:standSeats.length});
+  }
+  g.userData.base = g.position.clone(); g.visible = false; scene.add(g); stands.push(g);
+}
+const standCrowd = new THREE.InstancedMesh(personGeo, new THREE.MeshLambertMaterial({color:0xffffff}), standSeats.length); standCrowd.frustumCulled=false; standCrowd.visible=false; scene.add(standCrowd);
+standSeats.forEach((p,i)=>standCrowd.setColorAt(i, new THREE.Color(crowdCols[(i*7)%5])));
+const standGrey = new THREE.Color(0xb7bcc1), standDust = new THREE.Color(0xa49c90);
+addLabel('', 'prob w', ()=>{ const b=D.bends.C; return W(b.p[0]+b.out[0]*30, b.p[1]+b.out[1]*30, 20); }, ()=>step===0 && PSm.w>0.5); const weekLbl = labels[labels.length-1].el;
+
+// --- 3 · CUT IN TWO: fences rise on both sides, people walk up and stop ---
+const cutFenceMat = new THREE.MeshBasicMaterial({color:COL.race, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false});
+const cutFences = [-1,1].map(sd=>{ const P=[], I=[];
+  tr.forEach((p,i)=>{ const hw=p[3]/2+3.5; const x=p[0]+tN[i][0]*hw*sd, y=p[1]+tN[i][1]*hw*sd; const a=W(x,y,0.05), b=W(x,y,2.4); P.push(a.x,a.y,a.z, b.x,b.y,b.z); if (i){ const q=(i-1)*2; I.push(q,q+1,q+2, q+2,q+1,q+3); } });
+  const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P,3)); g.setIndex(I);
+  const m=new THREE.Mesh(g, cutFenceMat); m.renderOrder=6; m.visible=false; m.userData.total=I.length; scene.add(m); return m; });
+const WALK = 64, walkers = [];
+for (let i=0;i<WALK;i++){ const ti = 6 + Math.floor(rnd()*(tr.length-12)); walkers.push({ti, sd: i%2?1:-1, d0: 34+rnd()*40, ph: rnd(), sp: 0.8+rnd()*0.5}); }
+const walkMesh = new THREE.InstancedMesh(personGeo, new THREE.MeshLambertMaterial({color:0xffffff}), WALK); walkMesh.frustumCulled=false; walkMesh.visible=false; scene.add(walkMesh);
+walkers.forEach((w,i)=>walkMesh.setColorAt(i, new THREE.Color(i%3 ? 0x2f6b3b : 0x1d211c)));
+const crosses = [0.22,0.5,0.78].map(f=>{ const i=Math.round(f*(tr.length-1)); const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:crossTex, depthTest:false, transparent:true, opacity:0})); sp.position.copy(W(tr[i][0], tr[i][1], 9)); sp.renderOrder=11; sp.visible=false; scene.add(sp); return sp; });
+addLabel('NO WAY ACROSS', 'prob c', ()=>{ const i=Math.round(0.5*(tr.length-1)); return W(tr[i][0], tr[i][1], 24); }, ()=>step===0 && PSm.c>0.5);
+addLabel('PARK · half 1', 'prob c', ()=>{ const i=Math.round(0.35*(tr.length-1)); return W(tr[i][0]+tN[i][0]*70, tr[i][1]+tN[i][1]*70, 2); }, ()=>step===0 && PSm.c>0.5);
+addLabel('PARK · half 2', 'prob c', ()=>{ const i=Math.round(0.65*(tr.length-1)); return W(tr[i][0]-tN[i][0]*70, tr[i][1]-tN[i][1]*70, 2); }, ()=>step===0 && PSm.c>0.5);
+
+function setPstat(html){ if (html!==pstatLast){ pstat.innerHTML = html; pstatLast = html; } }
+const weeksBar = n => '<div class="weeks" aria-hidden="true">' + Array.from({length:52},(_,i)=>`<i class="${i===0?'race':(i<n?'on':'')}"></i>`).join('') + '</div>';
+function applyProblems(now, dt){
+  for (const k in PT){ PSm[k] += (PT[k]-PSm[k])*Math.min(1, dt*2.4); if (Math.abs(PT[k]-PSm[k])<1e-3) PSm[k]=PT[k]; }
+  const t = RM ? 1e4 : (now - probT0)/1000;
+  const pmax = Math.max(PSm.f, PSm.w, PSm.c);
+  // eye zones belong to the finished park only (step 05), never on top of step 01
+  const vOn = COND.view>0 && step===4; viewGrp.visible = vOn; if (viewInfo.hidden === vOn) viewInfo.hidden = !vOn;
+  arrowMat.opacity = S.arrows*(1-pmax); arrows.forEach(m=>m.visible = arrowMat.opacity>0.01);
+  // 1 · flood
+  const f = PSm.f, rise = PT.f ? ease(clamp01(t/3.6)) : f;
+  const lvl = (0.30*VS + 0.12)*rise;
+  floodBox.visible = ripple.visible = f>0.01;
+  floodMat.opacity = 0.5*f; floodBox.scale.y = 0.4 + lvl; floodBox.position.y = -0.4;
+  ripple.position.y = lvl + 0.02; rippleMat.uniforms.uO.value = f; rippleMat.uniforms.uT.value = now/1000;
+  terrainMat.uniforms.uWet.value = 0.6*f*rise;
+  if (f>0.01){ rain.visible = true; rain.material.opacity = Math.max(rain.material.opacity, 0.55*f);
+    if (CS.flood*ease(S.deck) < 0.01){ for (let i=0;i<RN;i++){ let y=rainPos[i*6+1]-dt*90; if (y<0) y+=170; rainPos[i*6+1]=y; rainPos[i*6+4]=y-3.2; } rainG.attributes.position.needsUpdate = true; }
+    hemi.intensity *= 1-0.22*f; sun.intensity *= 1-0.35*f; }
+  if (PROB===1){ const d = (0.30*rise).toFixed(2);
+    floodLbl.textContent = rise>0.98 ? 'TRACK UNDER WATER' : `water +${d} m`;
+    setPstat(`<span class="big">+${d} m</span> water on lawn, paths and track<br><small>flat ground · drains full · nowhere to store it</small>`); }
+  // 2 · fifty-one empty weeks
+  const w = PSm.w, sRise = PT.w ? ease(clamp01(t/1.1)) : w;
+  stands.forEach(g=>{ g.visible = w>0.01; g.scale.set(1, Math.max(0.001, sRise)*VS, 1); });
+  let ppl = 0, week = 1, phase = '';
+  if (PT.w){ ppl = clamp01((t-1.1)/0.6) * (1-clamp01((t-3.4)/0.6)); week = t<4.0 ? 1 : Math.min(52, 2+Math.floor((t-4.0)/0.1)); phase = t<1.1?'build':t<4.0?'race':week<52?'empty':'end'; }
+  standCrowd.visible = w>0.01 && ppl>0.01;
+  if (standCrowd.visible){ standSeats.forEach((p,i)=>{ const pop = clamp01(ppl*1.6 - (i%17)/30); dmy.position.copy(W(p.x,p.y,p.h*VS)); dmy.scale.set(1.6, 1.6*Math.max(pop,0.001), 1.6); dmy.updateMatrix(); standCrowd.setMatrixAt(i, dmy.matrix); }); standCrowd.instanceMatrix.needsUpdate = true; }
+  standMat.color.copy(standGrey).lerp(standDust, PT.w ? clamp01((t-4.0)/5) : 0);
+  if (PROB===2){
+    weekLbl.textContent = phase==='race' ? 'RACE WEEK · full' : phase==='empty' ? `week ${week} · empty` : phase==='end' ? '51 WEEKS EMPTY' : 'steel stands go up';
+    setPstat(phase==='end' ? `<span class="big">1 / 52</span> weeks in use · 51 empty${weeksBar(52)}` : `<span class="big">week ${week}</span> ${phase==='race' ? 'race week · stands full' : phase==='empty' ? 'stands empty' : 'building the stands'}${weeksBar(phase==='build'?0:week)}`); }
+  // 3 · cut in two
+  const c = PSm.c;
+  terrainMat.uniforms.uSplit.value = c * (PT.c ? ease(clamp01(t/1.0)) : 1);
+  const fp = PT.c ? ease(clamp01((t-0.3)/1.8)) : 1;
+  cutFenceMat.opacity = 0.75*c; cutFences.forEach(m=>{ m.visible = c>0.01; m.geometry.setDrawRange(0, Math.floor(fp*m.userData.total/6)*6); });
+  walkMesh.visible = c>0.01 && t>1.2;
+  if (walkMesh.visible){ walkers.forEach((wk,i)=>{ const p=tr[wk.ti], n=tN[wk.ti], stop=p[3]/2+5;
+      const cyc = (((t-1.2)*wk.sp/7) + wk.ph) % 1; const walk = ease(clamp01(cyc/0.6)); const fade = 1-clamp01((cyc-0.88)/0.12);
+      const d = wk.d0 + (stop - wk.d0)*walk; const x=p[0]+n[0]*d*wk.sd, y=p[1]+n[1]*d*wk.sd;
+      dmy.position.copy(W(x,y,0)); dmy.scale.set(2.4, 2.4*Math.max(0.001, c*fade*clamp01(cyc*8)), 2.4); dmy.updateMatrix(); walkMesh.setMatrixAt(i, dmy.matrix); });
+    walkMesh.instanceMatrix.needsUpdate = true; }
+  crosses.forEach((sp,i)=>{ const a = c * (PT.c ? clamp01((t-2.4-i*0.25)/0.4) : 1); sp.visible = a>0.01; sp.material.opacity = a; const s = 26*(0.88+0.12*Math.sin(now/300+i))*Math.min(1,a*1.3); sp.scale.set(s,s,1); });
+  if (PROB===3) setPstat(`<span class="big">0</span> ways across the track on race week<br><small>2 halves of one park · fenced on both sides</small>`);
+  // the car only runs on race week (problem 2) and never under the flood
+  if (PROB===1 && rise>0.5) car.visible = false;
+  if (PROB===2) car.visible = car.visible && phase==='race';
+}
+
 // ---------- per-frame ----------
 function applyAnim(now = performance.now()){
   trG.setDrawRange(0, Math.floor(ease(S.track)*trI.length/6)*6);
@@ -582,7 +742,7 @@ function frame(now){
   const before = S.m.join()+S.basin;
   advance(dt, now);
   if (S.m.join()+S.basin !== before) updateTerrain();
-  applyAnim(now); applyConditions(now, dt);
+  applyAnim(now); applyConditions(now, dt); applyProblems(now, dt);
   if (playing){ const p = (now-playT)/PLAY_MS; const bar = rail.children[step]?.querySelector('.bar'); if (bar) bar.style.width = Math.min(100,p*100)+'%';
     if (p>=1){ if (step<4){ setStep(step+1); playT=now; rail.querySelectorAll('.bar').forEach(b=>b.style.width='0'); } else stopPlay(); } }
   controls.update(); renderer.render(scene, cam); placeLabels();
@@ -591,7 +751,7 @@ function frame(now){
 resize(); home();
 updateTerrain(); buildDeck(); buildTowers(); buildCond(); buildView();
 let start = 0; try{ const s = parseInt(localStorage.getItem('mound-step')); if (s>=0 && s<5) start = s; }catch(e){}
-setStep(start);
+setStep(start); syncProbUI();
 S.track = 1;
 requestAnimationFrame(frame);
 </script>
