@@ -44,6 +44,10 @@ body{background:var(--table);color:var(--ink);font-family:var(--body);overflow:h
 .metric strong{color:var(--accent,var(--ink));font-weight:500}
 .tools{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .chip{font-family:var(--mono);font-size:11px;letter-spacing:.04em;background:var(--card);border:1px solid var(--rule);border-radius:3px;padding:7px 10px;color:var(--ink);cursor:pointer}
+.viewinfo{margin-top:8px;margin-left:auto;max-width:330px;background:var(--card);border:1px solid var(--race);border-left:4px solid var(--race);border-radius:3px;padding:9px 11px;font-size:12.5px;line-height:1.45}
+.viewinfo b{font-family:var(--display);font-size:19px;letter-spacing:.02em;color:var(--race)}
+.viewinfo .pct{font-family:var(--display);font-size:30px;font-weight:700;color:var(--race);font-variant-numeric:tabular-nums;line-height:1}
+.viewinfo small{font-family:var(--mono);font-size:10.5px;color:var(--ink-2)}
 .cond{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px}
 .seg{display:flex;border:1px solid var(--rule);border-radius:3px;overflow:hidden;background:var(--card)}
 .seg button{font-family:var(--mono);font-size:11px;letter-spacing:.04em;border:0;background:transparent;padding:7px 9px;color:var(--ink);cursor:pointer}
@@ -102,8 +106,10 @@ body{background:var(--table);color:var(--ink);font-family:var(--body);overflow:h
       <div class="cond" role="group" aria-label="Conditions of the finished park">
         <div class="seg"><button type="button" data-c="race" data-v="1" style="--c:#d9483b">RACE</button><button type="button" data-c="race" data-v="0" style="--c:#4f9a5c">PARK</button></div>
         <div class="seg"><button type="button" data-c="flood" data-v="0" style="--c:#a8774a">DRY</button><button type="button" data-c="flood" data-v="1" style="--c:#3f86c4">FLOOD</button></div>
+        <div class="seg view" aria-label="Eye position"><button type="button" data-c="view" data-v="0" style="--c:#7d837a">NO VIEW</button><button type="button" data-c="view" data-v="1" style="--c:#d9483b">👁 GROUND</button><button type="button" data-c="view" data-v="2" style="--c:#d9483b">👁 MOUND</button><button type="button" data-c="view" data-v="3" style="--c:#d9483b">👁 TOWER</button></div>
         <div class="seg"><button type="button" data-c="night" data-v="0" style="--c:#7d837a">DAY</button><button type="button" data-c="night" data-v="1" style="--c:#22304a">NIGHT</button></div>
       </div>
+      <div class="viewinfo" id="viewinfo" hidden></div>
       <div class="hint">drag to orbit · scroll to zoom · ← → to step</div>
     </div>
   </div>
@@ -208,10 +214,10 @@ const idx = [];
 for (let j=0;j<ny-1;j++) for (let i=0;i<nx-1;i++){ const a=j*nx+i, b=a+1, c=a+nx, d=c+1; idx.push(a,b,c, b,d,c); }
 tg.setIndex(idx); tg.setAttribute('position', new THREE.BufferAttribute(pos,3)); tg.setAttribute('hreal', new THREE.BufferAttribute(hreal,1));
 const terrainMat = new THREE.ShaderMaterial({
-  uniforms:{ L:{value:new THREE.Vector3(-0.45,0.8,0.35).normalize()}, uNight:{value:0}, uFlood:{value:0}, uBasin:{value:1}, uPoolN:{value:0}, uPools:{value:Array.from({length:32},()=>new THREE.Vector3())} },
+  uniforms:{ L:{value:new THREE.Vector3(-0.45,0.8,0.35).normalize()}, uNight:{value:0}, uFlood:{value:0}, uBasin:{value:1}, uPoolN:{value:0}, uView:{value:0}, uVis:{value:null}, uGrid:{value:new THREE.Vector4(0,0,1,1)}, uDim:{value:new THREE.Vector2(1,1)}, uPools:{value:Array.from({length:32},()=>new THREE.Vector3())} },
   vertexShader:`attribute float hreal; varying float vh; varying vec3 vn; varying vec2 vxz;
     void main(){ vh=hreal; vn=normalize(normalMatrix*normal); vxz=position.xz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-  fragmentShader:`uniform vec3 L; uniform float uNight; uniform float uFlood; uniform float uBasin; uniform int uPoolN; uniform vec3 uPools[32]; varying float vh; varying vec3 vn; varying vec2 vxz;
+  fragmentShader:`uniform vec3 L; uniform float uNight; uniform float uFlood; uniform float uBasin; uniform int uPoolN; uniform float uView; uniform sampler2D uVis; uniform vec4 uGrid; uniform vec2 uDim; uniform vec3 uPools[32]; varying float vh; varying vec3 vn; varying vec2 vxz;
     void main(){
       vec3 ground=vec3(0.878,0.894,0.858);
       vec3 col=ground;
@@ -231,6 +237,8 @@ const terrainMat = new THREE.ShaderMaterial({
       c=mix(c, c*vec3(0.86,0.9,0.95), uFlood*0.6);
       float glow=0.;
       for(int i=0;i<32;i++){ if(i>=uPoolN) break; vec2 dd=vxz-uPools[i].xy; glow+=exp(-dot(dd,dd)/(uPools[i].z*uPools[i].z)); }
+      if(uView>0.01){ vec2 uv=vec2((vxz.x+uGrid.x)/uGrid.z+0.5, (uGrid.y-vxz.y)/uGrid.z+0.5)/uDim; float v=texture2D(uVis,uv).r;
+        c=mix(c, c*0.62, uView*(1.-v)*0.55); c=mix(c, mix(c,vec3(0.93,0.27,0.22),0.38), uView*v); }
       c=mix(c, c*vec3(0.16,0.19,0.27), uNight) + uNight*min(glow,1.4)*vec3(1.0,0.80,0.52)*0.75;
       gl_FragColor=vec4(c,1.);
     }`
@@ -380,7 +388,7 @@ let playing = false, playT = 0; const PLAY_MS = 6500; const playBtn = document.g
 function stopPlay(){ playing=false; playBtn.textContent='PLAY'; playBtn.setAttribute('aria-pressed','false'); rail.querySelectorAll('.bar').forEach(b=>b.style.width='0'); }
 playBtn.onclick = ()=>{ if(playing){ stopPlay(); return; } playing=true; playT=performance.now(); playBtn.textContent='PAUSE'; playBtn.setAttribute('aria-pressed','true'); if(step===4) setStep(0); };
 
-function rebuildHeights(){ updateTerrain(); buildDeck(); buildTowers(); rebuildArcs(); buildCond(); applyAnim(); }
+function rebuildHeights(){ updateTerrain(); buildDeck(); buildTowers(); rebuildArcs(); buildCond(); if (typeof buildView==='function') buildView(); applyAnim(); }
 
 
 // ---------- conditions of the finished park: race/park · dry/flood · day/night ----------
@@ -438,8 +446,90 @@ function buildCond(){
   D.deck.forEach(P=>P.forEach((p,i)=>{ if (i%9 || pools.length>=32) return; const v=W(p[0],p[1],0); pools.push(new THREE.Vector3(v.x, v.z, 6)); }));
   pools.slice(0,32).forEach((v,i)=>terrainMat.uniforms.uPools.value[i].copy(v)); terrainMat.uniforms.uPoolN.value = Math.min(32,pools.length);
 }
+
+// ---------- eye positions: what can you see from the ground, a mound, a tower? ----------
+COND.view = 0; CS.view = 0;
+const visData = new Uint8Array(N*4), visTex = new THREE.DataTexture(visData, nx, ny, THREE.RGBAFormat);
+visTex.magFilter = THREE.LinearFilter; visTex.minFilter = THREE.LinearFilter; visTex.needsUpdate = true;
+terrainMat.uniforms.uVis.value = visTex; terrainMat.uniforms.uGrid.value.set(cx - D.x0, cy - D.y0, D.st, 0); terrainMat.uniforms.uDim.value.set(nx, ny);
+const bC = D.bends.C;
+const towerB = D.towers.find(t=>t.k==='B');
+const EYES = {
+  1:{name:'FROM THE GROUND', where:'flat lawn inside bend C, standing four rows back', x:bC.p[0]-bC.out[0]*26, y:bC.p[1]-bC.out[1]*26, h:1.6, range:150, crowd:true, fov:110, face:[bC.out[0], bC.out[1]]},
+  2:{name:'FROM THE MOUND', where:'crest of mound C, sitting on the grass', x:D.mc.C[0], y:D.mc.C[1], h:1.2, range:220, crowd:false, fov:120, face:[-bC.out[0], -bC.out[1]]},
+  3:{name:'FROM TOWER B', where:`observation pod, ${Math.round(towerB.H*towerB.pod)} m up the leaning tower`, x:towerB.base[0]+towerB.axis[0]*towerB.H*towerB.pod, y:towerB.base[1]+towerB.axis[1]*towerB.H*towerB.pod, z:towerB.base[2]+towerB.axis[2]*towerB.H*towerB.pod, h:1.6, range:320, crowd:false, fov:150, face:null}
+};
+{ const T=trackSamples0(); let mx=0,my=0; T.forEach(p=>{mx+=p[0];my+=p[1];}); mx/=T.length; my/=T.length; const E=EYES[3]; const dx=mx-E.x, dy=my-E.y, d=Math.hypot(dx,dy); E.face=[dx/d, dy/d]; }
+function trackSamples0(){ const o=[]; for (let i=0;i<tr.length;i+=2) o.push(tr[i]); return o; }
+// obstacle field: ground + 2.4 m event fence on race days + standing crowd around the ground eye
+const fenceH = new Float32Array(N);
+Object.values(D.fences).forEach(F=>{ for (let i=1;i<F.length;i++){ const a=F[i-1], b=F[i], L=Math.hypot(b[0]-a[0], b[1]-a[1]); for (let t=0;t<=L;t+=0.8){ const x=a[0]+(b[0]-a[0])*t/L, y=a[1]+(b[1]-a[1])*t/L; const ii=Math.round((x-D.x0)/D.st), jj=Math.round((y-D.y0)/D.st); if (ii>=0&&jj>=0&&ii<nx&&jj<ny) fenceH[jj*nx+ii]=2.4; } } });
+const gAt = (i,j)=>{ const k=j*nx+i; return mound[k]+basin[k]; };
+const trackSamples = []; for (let i=0;i<tr.length;i+=2) trackSamples.push(tr[i]);
+function computeView(id){
+  const E = EYES[id], race = COND.race===1;
+  const ez = (E.z!==undefined ? E.z : gH(E.x,E.y)) + E.h;
+  const ei=(E.x-D.x0)/D.st, ej=(E.y-D.y0)/D.st;
+  const obs = new Float32Array(N);
+  for (let j=0;j<ny;j++) for (let i=0;i<nx;i++){ const k=j*nx+i; let o=gAt(i,j) + (race? fenceH[k]:0);
+    if (E.crowd && race){ const dx=(i-ei)*D.st, dy=(j-ej)*D.st, d=Math.hypot(dx,dy); if (d>1.2 && d<8.5 && (dx*bC.out[0]+dy*bC.out[1])>0.3*d) o=Math.max(o, gAt(i,j)+1.75); }
+    obs[k]=o; }
+  const vis = (x,y,zt)=>{ const dx=x-E.x, dy=y-E.y, d=Math.hypot(dx,dy); if (d>E.range) return 0; const n=Math.max(2, Math.ceil(d/(D.st*0.6)));
+    for (let s=1;s<n;s++){ const t=s/n; const i=Math.round(ei+(x-E.x)/D.st*t), j=Math.round(ej+(y-E.y)/D.st*t); if (i<0||j<0||i>=nx||j>=ny) continue; if (obs[j*nx+i] > ez+(zt-ez)*t + 0.02) return 0; } return 1; };
+  for (let j=0;j<ny;j++) for (let i=0;i<nx;i++){ const k=j*nx+i; const v=vis(D.x0+i*D.st, D.y0+j*D.st, gAt(i,j)+0.3); visData[k*4]=v*255; visData[k*4+3]=255; }
+  visTex.needsUpdate = true;
+  let seen=0, inRange=0; const tv = trackSamples.map(p=>{ const d=Math.hypot(p[0]-E.x,p[1]-E.y); const v=vis(p[0],p[1],0.9); if (d<=E.range) inRange++; seen+=v; return v; });
+  const a0 = Math.atan2(E.face[1], E.face[0]), half = E.fov*Math.PI/360, rad = [];
+  for (let k=0;k<=72;k++){ const a=a0-half+2*half*k/72, ux=Math.cos(a), uy=Math.sin(a); let r=0, run=0;
+    let nv=0, nt=0;
+    for (let d=1.5; d<=E.range; d+=1.25){ const x=E.x+ux*d, y=E.y+uy*d; const i=Math.round((x-D.x0)/D.st), j=Math.round((y-D.y0)/D.st); if (i<0||j<0||i>=nx||j>=ny) break;
+      nt++; if (vis(x,y,gAt(i,j)+0.9)){ nv++; if (nv/nt>=0.35) r=d; } }
+    rad.push({a, r:Math.max(r, 2.5)}); }
+  { const raw=rad.map(q=>q.r); rad.forEach((q,k)=>{ const w=raw.slice(Math.max(0,k-3), k+4).sort((p,q)=>p-q); q.r=w[w.length>>1]; }); }
+  return {E, ez, tv, seen, total:trackSamples.length, rad};
+}
+const viewGrp = new THREE.Group(); scene.add(viewGrp);
+const tvGeo = new THREE.BoxGeometry(4.2, 0.8, 4.2);
+const tvMesh = new THREE.InstancedMesh(tvGeo, new THREE.MeshBasicMaterial({color:0xffffff}), trackSamples.length); tvMesh.frustumCulled=false; viewGrp.add(tvMesh);
+const eyeMat = new THREE.MeshBasicMaterial({color:0xd9483b}), rayOk = new THREE.LineBasicMaterial({color:0xd9483b, transparent:true, opacity:.75}), rayNo = new THREE.LineDashedMaterial({color:0x8a8f86, dashSize:2.5, gapSize:2.5, transparent:true, opacity:.6});
+let viewObjs = [], lastView = null;
+const viewInfo = document.getElementById('viewinfo');
+function buildView(){
+  viewObjs.forEach(o=>{ viewGrp.remove(o); o.geometry && o.geometry.dispose(); }); viewObjs=[];
+  const id = COND.view; viewGrp.visible = id>0;
+  if (!id){ viewInfo.hidden = true; terrainMat.uniforms.uView.value = 0; return; }
+  const R0 = computeView(id); lastView = R0; const E = R0.E;
+  const ep = W(E.x, E.y, R0.ez*VS);
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(4, 24, 16), eyeMat); eye.position.copy(ep); viewGrp.add(eye); viewObjs.push(eye);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(.25,.25, Math.max(.1, ep.y), 6).translate(0, -ep.y/2, 0), eyeMat); stem.position.copy(ep); viewGrp.add(stem); viewObjs.push(stem);
+  // clean view zone (like step 02): a red fan draped on the ground, dashed edge, three arrows
+  tvMesh.visible = false;
+  const ex=E.x, ey=E.y, NR=14, rows=[], pos=[], idx=[];
+  const hz=(x,y)=>gH(x,y)*VS+0.5;
+  R0.rad.forEach((q,k)=>{ for (let r=0;r<=NR;r++){ const d=q.r*r/NR, x=ex+Math.cos(q.a)*d, y=ey+Math.sin(q.a)*d; const v=W(x,y,0); pos.push(v.x, hz(x,y), v.z); } });
+  for (let k=0;k<R0.rad.length-1;k++) for (let r=0;r<NR;r++){ const a=k*(NR+1)+r, b=a+NR+1; idx.push(a,b,a+1, a+1,b,b+1); }
+  const fg=new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute(pos,3)); fg.setIndex(idx);
+  const fm=new THREE.Mesh(fg, new THREE.MeshBasicMaterial({color:0xd9483b, transparent:true, opacity:.24, depthWrite:false, side:THREE.DoubleSide})); fm.renderOrder=7; viewGrp.add(fm); viewObjs.push(fm);
+  const edge=[]; const e0=W(ex,ey,0); edge.push(new THREE.Vector3(e0.x, hz(ex,ey), e0.z));
+  R0.rad.forEach(q=>{ const x=ex+Math.cos(q.a)*q.r, y=ey+Math.sin(q.a)*q.r, v=W(x,y,0); edge.push(new THREE.Vector3(v.x, hz(x,y)+.2, v.z)); });
+  edge.push(edge[0].clone());
+  const el_=new THREE.Line(new THREE.BufferGeometry().setFromPoints(edge), new THREE.LineDashedMaterial({color:0xd9483b, dashSize:3, gapSize:2.2})); el_.computeLineDistances(); el_.renderOrder=8; viewGrp.add(el_); viewObjs.push(el_);
+  // three arrows on the ground, pointing out along the view
+  [-0.45,0,0.45].forEach(t=>{ const q=R0.rad[Math.round((t+0.5)*72)]; const L=Math.max(6, Math.min(q.r*0.8, 40));
+    const am=new THREE.Mesh(new THREE.ShapeGeometry(arrowShape(L, Math.max(1.1, L*0.05))).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({color:0xd9483b, transparent:true, opacity:.85, depthTest:false}));
+    am.position.set(e0.x, hz(ex,ey)+.3, e0.z); am.rotation.y=q.a; am.renderOrder=9; viewGrp.add(am); viewObjs.push(am); });
+  // a single plumb line from the eye to the ground
+  if (R0.seen/R0.total < 0.1){ const cv=document.createElement('canvas'); cv.width=cv.height=128; const g=cv.getContext('2d'); g.strokeStyle='#d9483b'; g.lineWidth=18; g.lineCap='round'; g.beginPath(); g.moveTo(26,26); g.lineTo(102,102); g.moveTo(102,26); g.lineTo(26,102); g.stroke();
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv), depthTest:false})); const q=R0.rad[36]; const x=ex+Math.cos(q.a)*12, y=ey+Math.sin(q.a)*12, v=W(x,y,0); sp.position.set(v.x, hz(x,y)+6, v.z); sp.scale.set(18,18,1); sp.renderOrder=10; viewGrp.add(sp); viewObjs.push(sp);
+    const cv2=document.createElement('canvas'); cv2.width=512; cv2.height=96; const g2=cv2.getContext('2d'); g2.fillStyle='#d9483b'; g2.font='700 44px Barlow Condensed, Arial Narrow, sans-serif'; g2.fillText('BLOCKED BY CROWD + FENCE', 8, 60);
+    const sp2=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv2), depthTest:false})); sp2.position.set(v.x, hz(x,y)+24, v.z); sp2.scale.set(80,15,1); sp2.renderOrder=10; viewGrp.add(sp2); viewObjs.push(sp2); }
+  const pct = Math.round(100*R0.seen/R0.total);
+  viewInfo.innerHTML = `<b>👁 ${E.name}</b><div><span class="pct">${pct}%</span> <small>of the track in this model is in view</small></div><div>${E.where}.</div><small>red zone = ground in clear view, ${E.fov}° field facing the track${COND.race && E.crowd ? ' · crowd 1.75 m and event fence 2.4 m block the view' : COND.race ? ' · event fence 2.4 m counted' : ''}</small>`;
+  viewInfo.hidden = false;
+}
+
 const nightsky = document.getElementById('nightsky');
-function setCond(k, v){ COND[k]=v; if (step<4) setStep(4, true); syncCondUI(); try{ localStorage.setItem('mound-cond', JSON.stringify(COND)); }catch(e){} if (RM) Object.assign(CS, COND); }
+function setCond(k, v){ COND[k]=v; if (k==='view' || k==='race') buildView(); if (step<4) setStep(4, true); syncCondUI(); try{ localStorage.setItem('mound-cond', JSON.stringify(COND)); }catch(e){} if (RM) Object.assign(CS, COND); }
 function syncCondUI(){ document.querySelectorAll('.cond button').forEach(b=>b.setAttribute('aria-pressed', String(COND[b.dataset.c]===+b.dataset.v))); }
 document.querySelectorAll('.cond button').forEach(b=>b.addEventListener('click', ()=>setCond(b.dataset.c, +b.dataset.v)));
 try{ const c=JSON.parse(localStorage.getItem('mound-cond')||'null'); if (c){ Object.assign(COND,c); Object.assign(CS,c); } }catch(e){}
@@ -464,6 +554,7 @@ function applyConditions(now, dt){
   trackMesh.material.emissive.setRGB(0.32*ni*race, 0.31*ni*race, 0.27*ni*race);
   coneMat.opacity = 0.16*ni*ease(S.tw[3]); cones.forEach(m=>m.visible = ni>0.01 && S.tw[3]>0.5);
   car.visible = car.visible && race>0.5;
+  CS.view += ((COND.view?1:0)-CS.view)*Math.min(1, dt*3); terrainMat.uniforms.uView.value = 0;
 }
 
 // ---------- per-frame ----------
@@ -498,7 +589,7 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 resize(); home();
-updateTerrain(); buildDeck(); buildTowers(); buildCond();
+updateTerrain(); buildDeck(); buildTowers(); buildCond(); buildView();
 let start = 0; try{ const s = parseInt(localStorage.getItem('mound-step')); if (s>=0 && s<5) start = s; }catch(e){}
 setStep(start);
 S.track = 1;
