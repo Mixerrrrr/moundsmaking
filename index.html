@@ -44,6 +44,8 @@ body{background:var(--table);color:var(--ink);font-family:var(--body);overflow:h
 .metric strong{color:var(--accent,var(--ink));font-weight:500}
 .tools{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .chip{font-family:var(--mono);font-size:11px;letter-spacing:.04em;background:var(--card);border:1px solid var(--rule);border-radius:3px;padding:7px 10px;color:var(--ink);cursor:pointer}
+.fp .hint{display:none}
+#fpbtn[aria-pressed="true"]{background:var(--race);color:#fff;border-color:var(--race)}
 .viewinfo{margin-top:8px;margin-left:auto;max-width:330px;background:var(--card);border:1px solid var(--race);border-left:4px solid var(--race);border-radius:3px;padding:9px 11px;font-size:12.5px;line-height:1.45}
 .viewinfo b{font-family:var(--display);font-size:19px;letter-spacing:.02em;color:var(--race)}
 .viewinfo .pct{font-family:var(--display);font-size:30px;font-weight:700;color:var(--race);font-variant-numeric:tabular-nums;line-height:1}
@@ -126,11 +128,12 @@ body{background:var(--table);color:var(--ink);font-family:var(--body);overflow:h
       <div class="tools">
         <button class="chip" id="vs" aria-pressed="true" type="button">heights ×1.5</button>
         <button class="chip" id="reset" type="button">reset view</button>
+        <button class="chip" id="fpbtn" type="button" aria-pressed="false">👁 see through their eyes</button>
       </div>
       <div class="cond" role="group" aria-label="Conditions of the finished park">
         <div class="seg"><button type="button" data-c="race" data-v="1" style="--c:#d9483b">RACE</button><button type="button" data-c="race" data-v="0" style="--c:#4f9a5c">PARK</button></div>
         <div class="seg"><button type="button" data-c="flood" data-v="0" style="--c:#a8774a">DRY</button><button type="button" data-c="flood" data-v="1" style="--c:#3f86c4">FLOOD</button></div>
-        <div class="seg view" aria-label="Eye position"><button type="button" data-c="view" data-v="0" style="--c:#7d837a">NO VIEW</button><button type="button" data-c="view" data-v="1" style="--c:#d9483b">👁 GROUND</button><button type="button" data-c="view" data-v="2" style="--c:#d9483b">👁 MOUND</button><button type="button" data-c="view" data-v="3" style="--c:#d9483b">👁 TOWER</button></div>
+        <div class="seg view" aria-label="Eye position"><button type="button" data-c="view" data-v="0" style="--c:#7d837a">NO VIEW</button><button type="button" data-c="view" data-v="1" style="--c:#d9483b">👁 GROUND</button><button type="button" data-c="view" data-v="2" style="--c:#d9483b">👁 MOUND</button><button type="button" data-c="view" data-v="3" style="--c:#d9483b">👁 TOWER</button><button type="button" data-c="view" data-v="4" style="--c:#d9483b">👁 SKYLOOP</button></div>
         <div class="seg"><button type="button" data-c="night" data-v="0" style="--c:#7d837a">DAY</button><button type="button" data-c="night" data-v="1" style="--c:#22304a">NIGHT</button></div>
       </div>
       <div class="viewinfo" id="viewinfo" hidden></div>
@@ -495,6 +498,9 @@ const EYES = {
   2:{name:'FROM THE MOUND', where:'crest of mound C, sitting on the grass', x:D.mc.C[0], y:D.mc.C[1], h:1.2, range:220, crowd:false, fov:120, face:[-bC.out[0], -bC.out[1]]},
   3:{name:'FROM THE TOWER', where:`saucer deck, ${Math.round(towerB.H*towerB.pod)} m up the tower`, x:towerB.base[0]+towerB.axis[0]*towerB.H*towerB.pod, y:towerB.base[1]+towerB.axis[1]*towerB.H*towerB.pod, z:towerB.base[2]+towerB.axis[2]*towerB.H*towerB.pod, h:1.6, range:320, crowd:false, fov:150, face:null}
 };
+{ const R=D.deck[2]; let best=null, bd=1e9, bi=0; R.forEach(p=>{ for (let i=0;i<tr.length;i+=2){ const d=Math.hypot(p[0]-tr[i][0],p[1]-tr[i][1]); if(d<bd){bd=d;best=p;bi=i;} } });
+  const a=tr[Math.max(0,bi-3)], b=tr[Math.min(tr.length-1,bi+3)]; let fx=b[0]-a[0], fy=b[1]-a[1]; const L=Math.hypot(fx,fy)||1;
+  EYES[4]={name:'FROM THE SKYLOOP', where:`ring deck, ${best[2].toFixed(1)} m above the track, right over the circuit`, x:best[0], y:best[1], z:best[2], h:1.6, range:260, crowd:false, fov:150, face:[fx/L, fy/L]}; }
 { const T=trackSamples0(); let mx=0,my=0; T.forEach(p=>{mx+=p[0];my+=p[1];}); mx/=T.length; my/=T.length; const E=EYES[3]; const dx=mx-E.x, dy=my-E.y, d=Math.hypot(dx,dy); E.face=[dx/d, dy/d]; }
 function trackSamples0(){ const o=[]; for (let i=0;i<tr.length;i+=2) o.push(tr[i]); return o; }
 // obstacle field: ground + 2.4 m event fence on race days + standing crowd around the ground eye
@@ -564,8 +570,43 @@ function buildView(){
   viewInfo.hidden = false;
 }
 
+// ---------- first person: stand where the eye is and look ----------
+const pcam = new THREE.PerspectiveCamera(58, 1, 0.2, 4000);
+const FP = {on:false};
+const fpBtn = document.getElementById('fpbtn');
+const headGeo = new THREE.SphereGeometry(0.13, 12, 8);
+const fpCrowd = new THREE.InstancedMesh(personGeo, new THREE.MeshLambertMaterial({color:0xffffff}), 120), fpHeads = new THREE.InstancedMesh(headGeo, new THREE.MeshLambertMaterial({color:0x2a2420}), 120);
+fpCrowd.frustumCulled = fpHeads.frustumCulled = false; fpCrowd.visible = fpHeads.visible = false; scene.add(fpCrowd); scene.add(fpHeads);
+const fpCols = [0x1d211c, 0xd9483b, 0x2b4d7e, 0xf0e6d2, 0x6b6f66];
+function buildFpCrowd(){ const E = EYES[1]; if (!E) return; const dm = new THREE.Object3D(); let n = 0; const r = (()=>{ let a=3; return ()=>{ a=(a*16807)%2147483647; return a/2147483647; }; })();
+  const fx=E.face[0], fy=E.face[1], px=-fy, py=fx;
+  for (let row=0; row<4; row++) for (let k=-6; k<=6; k++){ if (n>=120) break;
+    const d = -4.5 + row*1.5 + r()*0.4, s = k*0.66 + (row%2?0.3:0) + (r()-.5)*0.2; if (Math.abs(s) > (d+7)*0.8) continue;
+    const x = E.x + fx*d + px*s, y = E.y + fy*d + py*s, h = 1.58 + r()*0.25, z = gH(x,y)*VS;
+    dm.position.copy(W(x,y,z)); dm.scale.set(0.62, h/1.7*0.92, 0.5); dm.rotation.set(0, r()*0.6-0.3, 0); dm.updateMatrix(); fpCrowd.setMatrixAt(n, dm.matrix); fpCrowd.setColorAt(n, new THREE.Color(fpCols[n%5]));
+    dm.position.copy(W(x,y,z + h*0.93)); dm.scale.set(1,1.15,1); dm.updateMatrix(); fpHeads.setMatrixAt(n, dm.matrix); n++; }
+  fpCrowd.count = fpHeads.count = n; fpCrowd.instanceMatrix.needsUpdate = fpHeads.instanceMatrix.needsUpdate = true; if (fpCrowd.instanceColor) fpCrowd.instanceColor.needsUpdate = true; }
+function setFP(on){
+  if (on && COND.view===0) setCond('view', 1);
+  FP.on = on; fpBtn.setAttribute('aria-pressed', on); fpBtn.textContent = on ? '✕ back to the model' : '👁 see through their eyes';
+  if (on && VS !== 1) vsBtn.click();
+  controls.enabled = !on; document.body.classList.toggle('fp', on); if (on) buildFpCrowd();
+}
+fpBtn.onclick = ()=> setFP(!FP.on);
+function fpPose(){
+  const E = EYES[COND.view]; if (!E) return false;
+  let ex=E.x, ey=E.y, base=(E.z!==undefined ? E.z : gH(E.x,E.y)) + E.h;
+  if (COND.view===3){ ex += E.face[0]*11; ey += E.face[1]*11; base += 2.5; }   // step out of the saucer pod onto its deck edge
+  if (COND.view===4){ base += 1.4; }
+  if (COND.view===1){ ex -= E.face[0]*7; ey -= E.face[1]*7; base = gH(ex,ey) + E.h; }   // a few rows further back                                           // stand above the deck tube
+  pcam.position.copy(W(ex, ey, base*VS));
+  let tx, ty, tz;
+  if (COND.view===3){ const T=trackSamples0(); tx=0; ty=0; T.forEach(p=>{tx+=p[0];ty+=p[1];}); tx/=T.length; ty/=T.length; tz=0; }
+  else { const d = COND.view===1 ? 40 : 70; tx = E.x + E.face[0]*d; ty = E.y + E.face[1]*d; tz = COND.view===4 ? 0.5 : (COND.view===2 ? 0.3 : 1.2); }
+  pcam.lookAt(W(tx, ty, tz*VS)); pcam.aspect = stage.clientWidth/stage.clientHeight; pcam.updateProjectionMatrix(); return true;
+}
 const nightsky = document.getElementById('nightsky');
-function setCond(k, v){ COND[k]=v; if (k==='view' || k==='race') buildView(); if (step<4) setStep(4, true); syncCondUI(); try{ localStorage.setItem('mound-cond', JSON.stringify(COND)); }catch(e){} if (RM) Object.assign(CS, COND); }
+function setCond(k, v){ COND[k]=v; if (k==='view' && v===0 && FP.on) setTimeout(()=>setFP(false)); if (k==='view' || k==='race') buildView(); if (step<4) setStep(4, true); syncCondUI(); try{ localStorage.setItem('mound-cond', JSON.stringify(COND)); }catch(e){} if (RM) Object.assign(CS, COND); }
 function syncCondUI(){ document.querySelectorAll('.cond button').forEach(b=>b.setAttribute('aria-pressed', String(COND[b.dataset.c]===+b.dataset.v))); }
 document.querySelectorAll('.cond button').forEach(b=>b.addEventListener('click', ()=>setCond(b.dataset.c, +b.dataset.v)));
 try{ const c=JSON.parse(localStorage.getItem('mound-cond')||'null'); if (c){ Object.assign(COND,c); Object.assign(CS,c); } }catch(e){}
@@ -752,7 +793,11 @@ function frame(now){
   applyAnim(now); applyConditions(now, dt); applyProblems(now, dt);
   if (playing){ const p = (now-playT)/PLAY_MS; const bar = rail.children[step]?.querySelector('.bar'); if (bar) bar.style.width = Math.min(100,p*100)+'%';
     if (p>=1){ if (step<4){ setStep(step+1); playT=now; rail.querySelectorAll('.bar').forEach(b=>b.style.width='0'); } else stopPlay(); } }
-  controls.update(); renderer.render(scene, cam); placeLabels();
+  const fpOn = FP.on && COND.view>0 && step===4;
+  fpCrowd.visible = fpHeads.visible = fpOn && COND.view===1 && COND.race===1;
+  if (fpOn){ fenceMat.color.setHex(0x2f3a33); fenceMat.opacity = 0.96*CS.race; } else { fenceMat.color.setHex(COL.race); }
+  if (fpOn && fpPose()){ viewGrp.visible = false; labelsEl.style.opacity = 0; renderer.render(scene, pcam); }
+  else { if (FP.on && (COND.view===0 || step!==4)) setFP(false); labelsEl.style.opacity = 1; controls.update(); renderer.render(scene, cam); placeLabels(); }
   requestAnimationFrame(frame);
 }
 resize(); home();
